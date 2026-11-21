@@ -23,7 +23,7 @@ accepts requests from the YTGuy site and its own local page.
 
 YTGuy.exe also opens its own copy of the page, which works without internet access to GitHub.
 
-On first launch YTGuy offers to download its helper programs (about 100 MB, once) into
+On first launch YTGuy offers to download its helper programs (about 170 MB, once) into
 `%LOCALAPPDATA%\YTGuy\bin`: **yt-dlp**, **FFmpeg** and **Deno**. yt-dlp needs Deno to handle YouTube.
 
 ### Other ways to run it

@@ -23,8 +23,8 @@ jobs:
           python-version: "3.12"
       - name: Build YTGuy.exe
         run: |
-          python -m pip install pyinstaller
-          python -m PyInstaller --noconfirm --onefile --noconsole --name YTGuy --icon app.ico --add-data "web;web" server.py
+          python -m pip install pyinstaller truststore certifi
+          python -m PyInstaller --noconfirm --onefile --noconsole --name YTGuy --icon app.ico --add-data "web;web" --hidden-import truststore --collect-data certifi server.py
       - uses: actions/upload-artifact@v4
         with:
           name: YTGuy-windows

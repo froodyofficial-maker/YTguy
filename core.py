@@ -2,14 +2,16 @@
 
 import os
 import shutil
+import ssl
 import subprocess
 import tempfile
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
 
 APP_NAME = "YTGuy"
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.1"
 IS_WIN = os.name == "nt"
 EXE = ".exe" if IS_WIN else ""
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -171,9 +173,35 @@ def build_command(ytdlp, urls, out_dir, mode, height=None, prefer_h264=True,
     return cmd
 
 
-def download_file(url, dest, on_progress):
+def _ssl_contexts():
+    """Certificate stores to try, best first.
+
+    The Python bundled in YTGuy.exe can't see Windows' certificate store
+    reliably (Windows fetches root certificates on demand, and antivirus HTTPS
+    scanning adds its own root), so prefer the OS verifier via truststore.
+    """
+    contexts = []
+    try:
+        import truststore
+        contexts.append(truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT))
+    except Exception:
+        pass
+    try:
+        import certifi
+        contexts.append(ssl.create_default_context(cafile=certifi.where()))
+    except Exception:
+        pass
+    contexts.append(ssl.create_default_context())
+    return contexts
+
+
+def _is_ssl_error(e):
+    return isinstance(e, ssl.SSLError) or isinstance(getattr(e, "reason", None), ssl.SSLError)
+
+
+def _download_urllib(url, dest, on_progress, context):
     req = urllib.request.Request(url, headers={"User-Agent": f"{APP_NAME}/{APP_VERSION}"})
-    with urllib.request.urlopen(req, timeout=60) as r, open(dest, "wb") as f:
+    with urllib.request.urlopen(req, timeout=60, context=context) as r, open(dest, "wb") as f:
         total = int(r.headers.get("Content-Length") or 0)
         done = 0
         while True:
@@ -183,6 +211,43 @@ def download_file(url, dest, on_progress):
             f.write(chunk)
             done += len(chunk)
             on_progress(done, total)
+
+
+def _download_curl(url, dest, on_progress):
+    """Last resort: Windows' built-in curl.exe uses the native (Schannel) TLS stack."""
+    curl = shutil.which("curl.exe" if IS_WIN else "curl")
+    if not curl:
+        raise RuntimeError("curl not available")
+    cmd = [curl, "-L", "--fail", "-sS", "--retry", "2", "-o", str(dest), url]
+    if IS_WIN:
+        cmd.insert(1, "--ssl-revoke-best-effort")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=NO_WINDOW)
+    while proc.poll() is None:
+        time.sleep(0.3)
+        try:
+            on_progress(os.path.getsize(dest), 0)
+        except OSError:
+            pass
+    if proc.returncode != 0:
+        err = proc.stderr.read().decode("utf-8", "replace").strip()
+        raise RuntimeError(err or f"curl exited with code {proc.returncode}")
+
+
+def download_file(url, dest, on_progress):
+    ssl_err = None
+    for context in _ssl_contexts():
+        try:
+            return _download_urllib(url, dest, on_progress, context)
+        except Exception as e:
+            if not _is_ssl_error(e):
+                raise  # network/HTTP problem: let the caller try another mirror
+            ssl_err = e
+    try:
+        return _download_curl(url, dest, on_progress)
+    except Exception as e:
+        raise RuntimeError(
+            "Couldn't make a secure connection. If antivirus web protection, a VPN or a "
+            f"proxy is on, pause it and try again. (Details: {ssl_err}; curl: {e})")
 
 
 def install_tool(name, on_progress):
