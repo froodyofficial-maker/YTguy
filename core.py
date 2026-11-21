@@ -11,7 +11,7 @@ import zipfile
 from pathlib import Path
 
 APP_NAME = "YTGuy"
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.0.2"
 IS_WIN = os.name == "nt"
 EXE = ".exe" if IS_WIN else ""
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)

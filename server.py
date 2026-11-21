@@ -9,6 +9,7 @@ browser. Nothing is hosted online; all downloading happens on this machine.
 import json
 import os
 import secrets
+import socket
 import shutil
 import subprocess
 import sys
@@ -442,6 +443,18 @@ def tool_versions():
 
 # --------------------------------------------------------------------------- HTTP
 
+class Server(ThreadingHTTPServer):
+    daemon_threads = True
+    # On Windows SO_REUSEADDR lets two processes share a port, so a second
+    # YTGuy could silently run alongside an old one. Claim the port exclusively.
+    allow_reuse_address = not core.IS_WIN
+
+    def server_bind(self):
+        if core.IS_WIN and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 class State:
     settings = Settings()
     setup = Setup()
@@ -621,12 +634,32 @@ class Handler(BaseHTTPRequestHandler):
 
 # --------------------------------------------------------------------------- main
 
-def already_running(port):
+def running_instance(port):
+    """Return the ping reply of a YTGuy already on this port, else None."""
     try:
         with urllib.request.urlopen(f"http://{HOST}:{port}/api/ping", timeout=1.5) as r:
-            return json.loads(r.read()).get("app") == core.APP_NAME
+            info = json.loads(r.read())
+            return info if info.get("app") == core.APP_NAME else None
+    except Exception:
+        return None
+
+
+def replace_old_instance(port):
+    """Ask an older YTGuy on this port to quit so this (newer) copy can take over."""
+    req = urllib.request.Request(
+        f"http://{HOST}:{port}/api/quit", data=b"{}", method="POST",
+        headers={"Content-Type": "application/json", "Origin": next(iter(ALLOWED_ORIGINS))})
+    try:
+        urllib.request.urlopen(req, timeout=3).read()
     except Exception:
         return False
+    for _ in range(30):  # wait up to ~6 s for the port to free up
+        time.sleep(0.2)
+        try:
+            return Server((HOST, port), Handler)
+        except OSError:
+            pass
+    return False
 
 
 def idle_watchdog():
@@ -647,16 +680,22 @@ def main():
     server = None
     for port in ports:
         try:
-            server = ThreadingHTTPServer((HOST, port), Handler)
+            server = Server((HOST, port), Handler)
             break
         except OSError:
-            if already_running(port):
+            other = running_instance(port)
+            if not other:
+                continue
+            if other.get("version") == core.APP_VERSION:
                 if not no_browser:
                     webbrowser.open(f"http://{HOST}:{port}/")
                 return
+            replacement = replace_old_instance(port)  # an older version is running
+            if replacement:
+                server = replacement
+                break
     if server is None:
-        server = ThreadingHTTPServer((HOST, 0), Handler)
-    server.daemon_threads = True
+        server = Server((HOST, 0), Handler)
     State.server = server
     url = f"http://{HOST}:{server.server_address[1]}/"
     if sys.stdout:  # None in the windowless .exe build
