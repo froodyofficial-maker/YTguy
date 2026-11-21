@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="ytguy-token" content="{{TOKEN}}">
+<title>YTGuy</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<script>
+  try { const t = localStorage.getItem("ytguy-theme"); if (t && t !== "system") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 10 5-3v10l-5-3"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 2v10M18.4 6.6a9 9 0 1 1-12.8 0"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="favicon.svg" alt="" width="32" height="32">
+    <span>YTGuy</span>
+  </div>
+  <div class="top-actions">
+    <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme"><svg><use href="#i-moon"/></svg></button>
+    <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings"><svg><use href="#i-gear"/></svg></button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="panel converter" aria-label="Converter">
+    <div class="hero">
+      <h1>Download YouTube videos <span class="nowrap">up to 4K</span>, or save the audio as MP3</h1>
+      <p class="muted">Paste a link to a video, Short or playlist. Add more links on new lines to queue them all.</p>
+    </div>
+
+    <form class="url-bar" id="urlForm" autocomplete="off">
+      <svg class="url-icon"><use href="#i-link"/></svg>
+      <textarea id="url" rows="1" placeholder="https://www.youtube.com/watch?v=…" spellcheck="false" aria-label="YouTube link"></textarea>
+      <button type="button" class="btn ghost" id="pasteBtn"><svg><use href="#i-clip"/></svg><span>Paste</span></button>
+      <button type="submit" class="btn primary" id="fetchBtn"><span>Fetch</span><svg><use href="#i-arrow"/></svg></button>
+    </form>
+    <div class="url-meta" id="urlMeta" hidden></div>
+
+    <div id="preview" class="preview empty">
+      <div class="empty-hint">
+        <div class="steps">
+          <div><b>1</b>Paste a link</div>
+          <div><b>2</b>Choose a format and quality</div>
+          <div><b>3</b>Download</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="playlist-banner" id="playlistBanner" hidden>
+      <svg><use href="#i-list"/></svg>
+      <div class="grow"><b>This link is part of a playlist.</b><span class="muted" id="playlistNote">Download only this video, or the whole playlist?</span></div>
+      <label class="switch"><input type="checkbox" id="playlistToggle"><span></span></label>
+    </div>
+
+    <div class="section">
+      <div class="segmented" role="tablist" id="modeSeg">
+        <button role="tab" data-mode="video"><svg><use href="#i-video"/></svg>Video <small>MP4</small></button>
+        <button role="tab" data-mode="audio"><svg><use href="#i-music"/></svg>Audio <small>MP3 · M4A · more</small></button>
+        <span class="seg-thumb"></span>
+      </div>
+    </div>
+
+    <div class="section" id="videoOpts">
+      <div class="section-head"><h2>Quality</h2><span class="muted small" id="qualityNote"></span></div>
+      <div class="tiles q-tiles" id="qualityTiles"></div>
+      <label class="option">
+        <div><b>Best compatibility (H.264)</b><span class="muted">Plays in any app or device. Applies up to 1080p, since YouTube has no H.264 above that; 1440p and 4K come as VP9.</span></div>
+        <span class="switch"><input type="checkbox" id="h264Toggle"><span></span></span>
+      </label>
+    </div>
+
+    <div class="section" id="audioOpts" hidden>
+      <div class="section-head"><h2>Audio format</h2></div>
+      <div class="chips" id="formatChips"></div>
+      <p class="muted small fmt-desc" id="formatDesc"></p>
+      <div class="section-head"><h2>Bitrate</h2><span class="muted small" id="bitrateNote"></span></div>
+      <div class="tiles b-tiles" id="bitrateTiles"></div>
+    </div>
+
+    <div class="section">
+      <label class="option">
+        <div><b>Embed cover art &amp; tags</b><span class="muted">Adds the thumbnail, title and channel to the file.</span></div>
+        <span class="switch"><input type="checkbox" id="thumbToggle"><span></span></span>
+      </label>
+    </div>
+
+    <div class="save-row">
+      <svg><use href="#i-folder"/></svg>
+      <div class="grow"><span class="muted small">Save to</span><div class="path" id="outDir" title=""></div></div>
+      <button class="btn ghost sm" id="changeDirBtn">Change</button>
+      <button class="btn ghost sm" id="openDirBtn">Open</button>
+    </div>
+
+    <button class="btn primary xl" id="downloadBtn">
+      <svg><use href="#i-download"/></svg>
+      <span class="dl-text"><span id="dlMain">Download</span><small id="dlSub">MP4 · 1080p</small></span>
+    </button>
+  </section>
+
+  <aside class="panel queue" aria-label="Downloads">
+    <div class="queue-head">
+      <h2>Downloads <span class="count" id="queueCount" hidden></span></h2>
+      <button class="btn ghost sm" id="clearBtn" hidden>Clear finished</button>
+    </div>
+    <div class="jobs" id="jobs"></div>
+    <div class="queue-empty" id="queueEmpty">
+      <svg><use href="#i-inbox"/></svg>
+      <b>No downloads yet</b>
+      <span class="muted">Downloads you start will appear here with their progress.</span>
+    </div>
+  </aside>
+</main>
+
+<footer class="foot muted small">
+  Only download content you own or have permission to use. YTGuy runs only on this computer.
+</footer>
+
+<!-- Settings drawer -->
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <h2>Settings</h2>
+    <button class="icon-btn" id="closeDrawer" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+  </div>
+  <div class="drawer-body">
+    <div class="group">
+      <h3>Appearance</h3>
+      <div class="chips" id="themeChips">
+        <button data-theme="system">System</button>
+        <button data-theme="dark">Dark</button>
+        <button data-theme="light">Light</button>
+      </div>
+    </div>
+    <div class="group">
+      <h3>Download folder</h3>
+      <div class="field-row">
+        <input id="outDirInput" spellcheck="false">
+        <button class="btn ghost sm" id="saveDirBtn">Save</button>
+      </div>
+      <button class="btn ghost sm" id="browseDirBtn"><svg><use href="#i-folder"/></svg>Browse…</button>
+    </div>
+    <div class="group">
+      <h3>Components</h3>
+      <div class="versions" id="versions"><span class="muted small">Loading…</span></div>
+      <button class="btn ghost sm" id="updateBtn"><svg><use href="#i-retry"/></svg>Update yt-dlp</button>
+      <p class="muted small">If downloads suddenly start failing, update yt-dlp; YouTube changes often.</p>
+    </div>
+    <div class="group">
+      <h3>App</h3>
+      <button class="btn danger sm" id="quitBtn"><svg><use href="#i-power"/></svg>Quit YTGuy</button>
+      <p class="muted small">Stops the local server. YTGuy also stops on its own after 15 minutes with no browser tab open.</p>
+      <p class="muted small" id="appVersion"></p>
+    </div>
+  </div>
+</aside>
+
+<!-- First-run setup -->
+<div class="modal-wrap" id="setupModal" hidden>
+  <div class="modal">
+    <img src="favicon.svg" alt="" width="56" height="56">
+    <h2>Welcome to YTGuy</h2>
+    <p class="muted">First, YTGuy needs three free helper programs (about 100 MB). This is a one-time download.</p>
+    <ul class="setup-list" id="setupList"></ul>
+    <div class="bar"><span id="setupBar"></span></div>
+    <p class="small muted" id="setupText">&nbsp;</p>
+    <p class="small error" id="setupError" hidden></p>
+    <button class="btn primary lg" id="setupBtn">Download components</button>
+  </div>
+</div>
+
+<div class="drop-overlay" id="dropOverlay" hidden><div>Drop the link here</div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="offline" id="offline" hidden>YTGuy isn't running. Start it again from the YTGuy shortcut, then reload this page.</div>
+
+<script src="app.js"></script>
+</body>
+</html>
