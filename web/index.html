@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="ytguy-token" content="{{TOKEN}}">
 <title>YTGuy</title>
+<meta name="description" content="Download YouTube videos as MP4 up to 4K, or audio as MP3, M4A, Opus, FLAC or WAV.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="app.css">
 <script>
@@ -40,6 +41,7 @@
     <span>YTGuy</span>
   </div>
   <div class="top-actions">
+    <button class="helper-pill" id="helperPill" data-ok="false" hidden title="YTGuy helper status"><i></i><span id="helperPillText">Not connected</span></button>
     <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme"><svg><use href="#i-moon"/></svg></button>
     <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings"><svg><use href="#i-gear"/></svg></button>
   </div>
@@ -136,7 +138,8 @@
 </main>
 
 <footer class="foot muted small">
-  Only download content you own or have permission to use. YTGuy runs only on this computer.
+  Only download content you own or have permission to use. All downloads happen on your own computer.
+  · <a href="https://github.com/froodyofficial-maker/ytguy">Source on GitHub</a>
 </footer>
 
 <!-- Settings drawer -->
@@ -189,6 +192,26 @@
     <p class="small muted" id="setupText">&nbsp;</p>
     <p class="small error" id="setupError" hidden></p>
     <button class="btn primary lg" id="setupBtn">Download components</button>
+  </div>
+</div>
+
+<!-- GitHub Pages: connect to the helper app -->
+<div class="modal-wrap" id="connectModal" hidden>
+  <div class="modal connect">
+    <img src="favicon.svg" alt="" width="56" height="56">
+    <h2>Start YTGuy on your PC</h2>
+    <p class="muted">Browsers can't download YouTube videos on their own, so this page works with the free YTGuy app on your computer. Downloads stay on your computer.</p>
+    <ol class="connect-steps">
+      <li><b>1</b><div><strong>Download YTGuy</strong><span class="muted">For Windows 10 and 11. No install needed.</span></div></li>
+      <li><b>2</b><div><strong>Open YTGuy.exe</strong><span class="muted">If Windows shows "protected your PC", click <em>More info</em>, then <em>Run anyway</em>.</span></div></li>
+      <li><b>3</b><div><strong>Allow local access</strong><span class="muted">If your browser asks to let this site access devices on your local network, click <em>Allow</em>.</span></div></li>
+    </ol>
+    <a class="btn primary lg" id="connectDownload" href="#" download><svg><use href="#i-download"/></svg>Download YTGuy.exe</a>
+    <p class="small muted connect-status"><span class="spinner"></span><span id="connectStatus">Waiting for YTGuy to start on this computer…</span></p>
+    <div class="connect-actions">
+      <button class="btn ghost sm" id="connectRetry"><svg><use href="#i-retry"/></svg>Check again</button>
+      <button class="btn ghost sm" id="connectLater">Look around first</button>
+    </div>
   </div>
 </div>
 

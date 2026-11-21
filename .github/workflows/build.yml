@@ -3,11 +3,15 @@ name: Build Windows app
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    paths-ignore: ["README.md"]
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -25,8 +29,14 @@ jobs:
         with:
           name: YTGuy-windows
           path: dist/YTGuy.exe
-      - name: Attach to release (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/YTGuy.exe
+      # Publish as the "latest" release so the website's download button
+      # (releases/latest/download/YTGuy.exe) always serves the newest build.
+      - name: Publish latest release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest dist/YTGuy.exe --target "$GITHUB_SHA" --latest \
+            --title "YTGuy for Windows" \
+            --notes "Download **YTGuy.exe**, run it, then use the website: https://froodyofficial-maker.github.io/ytguy/ (it also opens its own page). Built from ${GITHUB_SHA::7}."

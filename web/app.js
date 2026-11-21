@@ -1,7 +1,16 @@
 "use strict";
 
-const TOKEN = document.querySelector('meta[name="ytguy-token"]').content;
 const $ = (s, el = document) => el.querySelector(s);
+
+// Two ways this page runs:
+//  * LOCAL  - served by the YTGuy helper itself (http://127.0.0.1:87xx), with a session token.
+//  * REMOTE - hosted on GitHub Pages; it finds the helper on this PC and talks to it directly.
+const META_TOKEN = document.querySelector('meta[name="ytguy-token"]').content;
+const LOCAL = ["127.0.0.1", "localhost"].includes(location.hostname) && !META_TOKEN.startsWith("{{");
+const TOKEN = LOCAL ? META_TOKEN : "";
+const HELPER_PORTS = [8765, 8766, 8767, 8768, 8769];
+const DOWNLOAD_URL = "https://github.com/froodyofficial-maker/ytguy/releases/latest/download/YTGuy.exe";
+let API_BASE = LOCAL ? "" : null;
 
 const QUALITIES = [
   { h: 2160, label: "4K", sub: "2160p · Ultra HD", tag: "UHD" },
@@ -35,14 +44,19 @@ const state = {
   setup: null,
   pollTimer: null,
   finishedSeen: new Set(),
+  settingsLoaded: false,
   firstLoad: true,
 };
 
 /* ---------------- api ---------------- */
 async function api(path, body) {
-  const res = await fetch("/api/" + path, {
+  if (API_BASE === null) throw new Error("YTGuy isn't running on this computer yet.");
+  const headers = {};
+  if (TOKEN) headers["X-Token"] = TOKEN;
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const res = await fetch(API_BASE + "/api/" + path, {
     method: body === undefined ? "GET" : "POST",
-    headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
@@ -106,7 +120,7 @@ let saveTimer;
 function saveSettings(patch) {
   Object.assign(state.settings, patch);
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => api("settings", patch).catch(e => toast(e.message, "err")), 150);
+  if (API_BASE !== null) saveTimer = setTimeout(() => api("settings", patch).catch(e => toast(e.message, "err")), 150);
   renderOptions();
 }
 
@@ -259,6 +273,7 @@ async function loadInfo(force = false) {
   meta.hidden = urls.length <= 1;
   if (urls.length > 1) meta.textContent = `${urls.length} links detected. They'll be queued with the settings below.`;
   renderDownloadButton();
+  if (urls.length && API_BASE === null) { showConnect(); return; }
   if (urls.length === 0) {
     state.info = null; state.infoUrl = null; state.infoLoading = false;
     renderPreview(); renderPlaylistBanner(); renderOptions();
@@ -287,6 +302,7 @@ async function loadInfo(force = false) {
 
 /* ---------------- download ---------------- */
 async function startDownload() {
+  if (API_BASE === null) { showConnect(); return; }
   const urls = parseUrls($("#url").value);
   if (!urls.length) { toast("Paste a YouTube link first.", "err"); $("#url").focus(); return; }
   if (blockingMissing().length) { showSetup(); return; }
@@ -494,16 +510,52 @@ function renderSetup() {
   btn.textContent = s.running ? "Downloading…" : s.error ? "Try again" : "Download components";
 }
 
+/* ---------------- helper connection (GitHub Pages mode) ---------------- */
+let connectDismissed = false;
+async function findHelper() {
+  for (const port of HELPER_PORTS) {
+    const base = `http://127.0.0.1:${port}`;
+    try {
+      const res = await fetch(base + "/api/ping", { signal: AbortSignal.timeout(1500) });
+      const j = await res.json();
+      if (j.app === "YTGuy") return base;
+    } catch (e) { /* not on this port */ }
+  }
+  return null;
+}
+function setConnected(ok) {
+  const pill = $("#helperPill");
+  if (!LOCAL) {
+    pill.hidden = false;
+    pill.dataset.ok = String(ok);
+    $("#helperPillText").textContent = ok ? "Connected" : "Not connected";
+  }
+  $("#connectModal").hidden = LOCAL || ok || connectDismissed;
+  document.body.classList.toggle("disconnected", !ok);
+}
+function showConnect() { connectDismissed = false; setConnected(false); }
+
 /* ---------------- polling ---------------- */
 let failures = 0;
 async function poll(immediate) {
   clearTimeout(state.pollTimer);
-  if (!immediate) { /* scheduled */ }
+  if (!LOCAL && API_BASE === null) {
+    API_BASE = await findHelper();
+    if (API_BASE === null) {
+      setConnected(false);
+      state.pollTimer = setTimeout(poll, 2500);
+      return;
+    }
+    state.settingsLoaded = false; // reload settings from the helper we just found
+    toast("Connected to YTGuy", "ok");
+  }
   try {
     const data = await api("state");
     failures = 0;
     $("#offline").hidden = true;
-    if (!state.settings) {
+    setConnected(true);
+    if (!state.settingsLoaded) {
+      state.settingsLoaded = true;
       state.settings = data.settings;
       applyTheme(localTheme() || data.settings.theme || "system");
       $("#appVersion").textContent = `YTGuy v${data.version}`;
@@ -516,7 +568,10 @@ async function poll(immediate) {
     renderJobs();
     renderSetup();
   } catch (e) {
-    if (++failures >= 2) $("#offline").hidden = false;
+    if (++failures >= 2) {
+      if (LOCAL) $("#offline").hidden = false;
+      else { API_BASE = null; setConnected(false); state.pollTimer = setTimeout(poll, 2500); return; }
+    }
   }
   const busy = state.jobs.some(j => ["queued", "downloading", "processing"].includes(j.status)) || state.setup?.running;
   state.pollTimer = setTimeout(poll, busy ? 600 : 3000);
@@ -591,6 +646,7 @@ $("#downloadBtn").addEventListener("click", startDownload);
 $("#clearBtn").addEventListener("click", () => api("clear", {}).then(() => poll(true)));
 
 async function pickFolder() {
+  if (API_BASE === null) { showConnect(); return; }
   try {
     const r = await api("pick-folder", {});
     if (r.changed) { state.settings.out_dir = r.out_dir; renderOptions(); toast("Download folder updated", "ok"); }
@@ -598,7 +654,7 @@ async function pickFolder() {
 }
 $("#changeDirBtn").addEventListener("click", pickFolder);
 $("#browseDirBtn").addEventListener("click", pickFolder);
-$("#openDirBtn").addEventListener("click", () => api("reveal", { path: "" }).catch(e => toast(e.message, "err")));
+$("#openDirBtn").addEventListener("click", () => API_BASE === null ? showConnect() : api("reveal", { path: "" }).catch(e => toast(e.message, "err")));
 $("#saveDirBtn").addEventListener("click", () => {
   const v = $("#outDirInput").value.trim();
   if (!v) return;
@@ -618,6 +674,7 @@ $("#scrim").addEventListener("click", closeDrawer);
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
 
 $("#updateBtn").addEventListener("click", async () => {
+  if (API_BASE === null) { showConnect(); return; }
   try { await api("update", {}); setupWanted = false; toast("Updating yt-dlp…"); watchUpdate(); }
   catch (e) { toast(e.message, "err"); }
 });
@@ -631,6 +688,7 @@ async function watchUpdate() {
 $("#quitBtn").addEventListener("click", async () => {
   if (!confirm("Quit YTGuy? Any running downloads will be cancelled.")) return;
   try { await api("quit", {}); } catch (e) {}
+  if (!LOCAL) { closeDrawer(); API_BASE = null; showConnect(); poll(true); return; }
   document.body.innerHTML = '<div style="display:grid;place-items:center;height:100vh;text-align:center;font:16px system-ui;padding:16px"><div><h2>YTGuy has stopped.</h2><p style="opacity:.7">You can close this tab. Start YTGuy again from its shortcut.</p></div></div>';
 });
 $("#setupBtn").addEventListener("click", async () => {
@@ -656,6 +714,20 @@ document.addEventListener("paste", e => {
   if (parseUrls(text).length) { urlBox.value = text; autoGrow(); loadInfo(true); }
 });
 
+// connect screen
+$("#connectDownload").href = DOWNLOAD_URL;
+$("#connectRetry").addEventListener("click", async () => {
+  $("#connectStatus").textContent = "Looking for YTGuy…";
+  await poll(true);
+  if (API_BASE === null) $("#connectStatus").textContent = "Still not found. Make sure YTGuy.exe is open, then try again.";
+});
+$("#connectLater").addEventListener("click", () => { connectDismissed = true; setConnected(false); });
+$("#helperPill").addEventListener("click", () => { if (API_BASE === null) showConnect(); });
+
+// Defaults so the page is usable (and explorable) before the helper connects.
+state.settings = { out_dir: "Downloads\\YTGuy", mode: "video", height: 1080, audio_format: "mp3", bitrate: "320",
+                   prefer_h264: true, embed_thumbnail: true, playlist: false, theme: "system" };
+renderOptions();
 applyTheme(localTheme() || "system");
 poll(true);
 urlBox.focus();

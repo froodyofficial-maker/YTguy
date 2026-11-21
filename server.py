@@ -24,7 +24,10 @@ from pathlib import Path
 import core
 
 HOST = "127.0.0.1"
-DEFAULT_PORT = 8765
+PORTS = range(8765, 8770)  # the GitHub Pages site looks for the helper on these ports
+# Web pages allowed to control this helper from the browser (the GitHub Pages site).
+ALLOWED_ORIGINS = {"https://froodyofficial-maker.github.io"} | {
+    o.strip().rstrip("/") for o in os.environ.get("YTGUY_ALLOWED_ORIGINS", "").split(",") if o.strip()}
 WEB_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "web"
 TOKEN = secrets.token_urlsafe(24)
 MAX_PARALLEL = 2
@@ -469,8 +472,29 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        self._cors_headers()
         self.end_headers()
         self.wfile.write(data)
+
+    def _origin_ok(self):
+        return self.headers.get("Origin") in ALLOWED_ORIGINS
+
+    def _cors_headers(self):
+        if self._origin_ok():
+            self.send_header("Access-Control-Allow-Origin", self.headers["Origin"])
+            self.send_header("Vary", "Origin")
+
+    def do_OPTIONS(self):  # CORS preflight from the GitHub Pages site
+        if not self._host_ok() or not self._origin_ok():
+            return self._send(403, {"error": "forbidden"})
+        self.send_response(204)
+        self._cors_headers()
+        self.send_header("Access-Control-Allow-Methods", "GET, POST")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Access-Control-Max-Age", "600")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _json(self):
         n = int(self.headers.get("Content-Length") or 0)
@@ -482,7 +506,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, {"error": "forbidden"})
         path = self.path.split("?", 1)[0]
         if path == "/api/ping":
-            return self._send(200, {"app": core.APP_NAME})
+            return self._send(200, {"app": core.APP_NAME, "version": core.APP_VERSION})
         if path.startswith("/api/"):
             return self._api("GET", path)
         if path == "/":
@@ -502,8 +526,10 @@ class Handler(BaseHTTPRequestHandler):
 
     # ----- API
     def _api(self, method, path):
-        if not secrets.compare_digest(self.headers.get("X-Token", ""), TOKEN):
-            return self._send(403, {"error": "bad token"})
+        # Allowed: the local page (has the per-session token) or the GitHub Pages
+        # site (browsers set Origin themselves, so other sites can't fake it).
+        if not (secrets.compare_digest(self.headers.get("X-Token", ""), TOKEN) or self._origin_ok()):
+            return self._send(403, {"error": "forbidden"})
         State.last_seen = time.time()
         try:
             body = self._json() if method == "POST" else {}
@@ -614,17 +640,21 @@ def idle_watchdog():
 
 def main():
     no_browser = "--no-browser" in sys.argv
-    port = DEFAULT_PORT
+    ports = list(PORTS)
     for a in sys.argv[1:]:
         if a.startswith("--port="):
-            port = int(a.split("=", 1)[1])
-    try:
-        server = ThreadingHTTPServer((HOST, port), Handler)
-    except OSError:
-        if already_running(port):
-            if not no_browser:
-                webbrowser.open(f"http://{HOST}:{port}/")
-            return
+            ports = [int(a.split("=", 1)[1])]
+    server = None
+    for port in ports:
+        try:
+            server = ThreadingHTTPServer((HOST, port), Handler)
+            break
+        except OSError:
+            if already_running(port):
+                if not no_browser:
+                    webbrowser.open(f"http://{HOST}:{port}/")
+                return
+    if server is None:
         server = ThreadingHTTPServer((HOST, 0), Handler)
     server.daemon_threads = True
     State.server = server
