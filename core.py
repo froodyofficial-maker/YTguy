@@ -11,7 +11,7 @@ import zipfile
 from pathlib import Path
 
 APP_NAME = "YTGuy"
-APP_VERSION = "2.0.2"
+APP_VERSION = "2.1.0"
 IS_WIN = os.name == "nt"
 EXE = ".exe" if IS_WIN else ""
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -49,6 +49,11 @@ TOOLS = {
             "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
         ],
         "members": ["ffmpeg.exe", "ffprobe.exe"],
+    },
+    "aria2c": {
+        "exe": "aria2c" + EXE,
+        "urls": ["https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip"],
+        "members": ["aria2c.exe"],
     },
     "deno": {
         "exe": "deno" + EXE,
@@ -114,7 +119,8 @@ def to_num(s):
 
 def build_command(ytdlp, urls, out_dir, mode, height=None, prefer_h264=True,
                   audio_format="mp3", bitrate="320", playlist=False,
-                  embed_thumbnail=True, filepath_log=None, temp_dir=None):
+                  embed_thumbnail=True, filepath_log=None, temp_dir=None,
+                  fast=True, info_json=None):
     """Build the yt-dlp command line. Pure function (easy to test)."""
     ffmpeg = tool_path("ffmpeg")
     cmd = [
@@ -165,11 +171,27 @@ def build_command(ytdlp, urls, out_dir, mode, height=None, prefer_h264=True,
         if embed_thumbnail and audio_format != "wav":
             cmd += ["--embed-thumbnail", "--convert-thumbnails", "jpg"]
 
+    # Speed: download fragmented (DASH/HLS) formats several pieces at a time, and
+    # pull plain HTTPS streams over 8 connections with aria2c when available.
+    cmd += ["-N", "4"]
+    if fast and tool_path("aria2c"):
+        # Pass the name, not the path: yt-dlp only recognises aria2c by name. Our
+        # bin folder is first on PATH (subprocess_env), so the bundled copy is used.
+        cmd += ["--downloader", "http:aria2c", "--downloader", "https:aria2c",
+                # --auto-save-interval=1 refreshes the .aria2 control file every
+                # second; YTGuy reads it for live progress (aria2c's own console
+                # output is buffered when piped, so it only arrives at the end).
+                "--downloader-args", "aria2c:-x 8 -s 8 -k 1M --auto-save-interval=1"]
+
     if filepath_log:
         # Record each finished file so the UI can reveal it in Explorer.
         cmd += ["--print-to-file", "after_move:%(filepath)s", str(filepath_log)]
 
-    cmd += ["--"] + list(urls)
+    if info_json:
+        # Reuse the info fetched for the preview: skips a second YouTube lookup.
+        cmd += ["--load-info-json", str(info_json)]
+    else:
+        cmd += ["--"] + list(urls)
     return cmd
 
 
@@ -287,3 +309,34 @@ def kill_process_tree(proc):
                        creationflags=NO_WINDOW, capture_output=True)
     else:
         proc.terminate()
+
+
+def read_aria2_control(path):
+    """Return (completed_bytes, total_bytes) from an aria2 .aria2 control file.
+
+    Format (aria2 manual, "Control File"): VER(2) EXT(4) INFOHASH_LEN(4)
+    INFOHASH PIECE_LEN(4) TOTAL(8) UPLOADED(8) BITFIELD_LEN(4) BITFIELD
+    N_INFLIGHT(4) then per in-flight piece: INDEX(4) LEN(4) BF_LEN(4) BF,
+    where in-flight bitfields count 16 KiB blocks. Version 1 is big-endian.
+    """
+    import struct
+    with open(path, "rb") as f:
+        data = f.read()
+    ver = struct.unpack(">H", data[:2])[0]
+    end = ">" if ver == 1 else "<"
+    pos = 6
+    (hash_len,) = struct.unpack(end + "I", data[pos:pos + 4]); pos += 4 + hash_len
+    (piece_len,) = struct.unpack(end + "I", data[pos:pos + 4]); pos += 4
+    (total,) = struct.unpack(end + "Q", data[pos:pos + 8]); pos += 16  # skip uploaded
+    (bf_len,) = struct.unpack(end + "I", data[pos:pos + 4]); pos += 4
+    done = sum(bin(b).count("1") for b in data[pos:pos + bf_len]) * piece_len
+    pos += bf_len
+    if pos + 4 <= len(data):
+        (n,) = struct.unpack(end + "I", data[pos:pos + 4]); pos += 4
+        for _ in range(n):
+            if pos + 12 > len(data):
+                break
+            _, _, pbf_len = struct.unpack(end + "III", data[pos:pos + 12]); pos += 12
+            done += sum(bin(b).count("1") for b in data[pos:pos + pbf_len]) * 16 * 1024
+            pos += pbf_len
+    return min(done, total), total

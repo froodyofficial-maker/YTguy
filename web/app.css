@@ -441,3 +441,4 @@ h1, h2, h3 { margin: 0; letter-spacing: -.01em; }
 .connect-actions .btn { width: auto; margin-top: 0; }
 .foot a { color: inherit; }
 @keyframes pulse { 50% { opacity: .35; } }
+.drawer-option { width: 100%; }

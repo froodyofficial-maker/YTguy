@@ -179,6 +179,7 @@ function renderOptions() {
   $("#bitrateNote").textContent = lossless ? "Lossless formats don't use a bitrate." : (dur ? "Estimated file size shown" : "");
 
   $("#thumbToggle").checked = !!s.embed_thumbnail;
+  $("#fastToggle").checked = s.fast_mode !== false;
   $("#playlistToggle").checked = !!s.playlist;
   $("#outDir").textContent = shortPath(s.out_dir);
   $("#outDir").title = s.out_dir;
@@ -312,12 +313,14 @@ async function startDownload() {
   const btn = $("#downloadBtn");
   btn.disabled = true;
   try {
-    await api("download", {
+    const r = await api("download", {
       urls, mode: s.mode, height: s.height || null, audio_format: s.audio_format, bitrate: s.bitrate,
       prefer_h264: s.prefer_h264, embed_thumbnail: s.embed_thumbnail,
       playlist: urls.length === 1 && info?.has_playlist ? s.playlist : false, meta,
     });
-    toast(urls.length > 1 ? `${urls.length} downloads added` : "Download started", "ok");
+    if (r.added === 0) toast("That's already downloading.");
+    else toast((r.added > 1 ? `${r.added} downloads added` : "Download started") +
+               (r.duplicates ? ` (${r.duplicates} already downloading)` : ""), "ok");
     $("#url").value = "";
     autoGrow();
     state.info = null; state.infoUrl = null;
@@ -462,7 +465,7 @@ function renderJobs() {
 }
 
 /* ---------------- setup ---------------- */
-const TOOL_INFO = { "yt-dlp": "yt-dlp: the downloader", ffmpeg: "FFmpeg: merging and conversion", deno: "Deno: needed by yt-dlp for YouTube" };
+const TOOL_INFO = { "yt-dlp": "yt-dlp: the downloader", ffmpeg: "FFmpeg: merging and conversion", aria2c: "aria2: faster downloads", deno: "Deno: needed by yt-dlp for YouTube" };
 let setupWanted = false;
 let platform = "windows";
 // yt-dlp + FFmpeg are required for any download; Deno is needed for YouTube links.
@@ -641,6 +644,7 @@ $("#modeSeg").addEventListener("click", e => {
 });
 $("#h264Toggle").addEventListener("change", e => saveSettings({ prefer_h264: e.target.checked }));
 $("#thumbToggle").addEventListener("change", e => saveSettings({ embed_thumbnail: e.target.checked }));
+$("#fastToggle").addEventListener("change", e => saveSettings({ fast_mode: e.target.checked }));
 $("#playlistToggle").addEventListener("change", e => { saveSettings({ playlist: e.target.checked }); renderPlaylistBanner(); loadInfo(); });
 $("#downloadBtn").addEventListener("click", startDownload);
 $("#clearBtn").addEventListener("click", () => api("clear", {}).then(() => poll(true)));
@@ -726,7 +730,7 @@ $("#helperPill").addEventListener("click", () => { if (API_BASE === null) showCo
 
 // Defaults so the page is usable (and explorable) before the helper connects.
 state.settings = { out_dir: "Downloads\\YTGuy", mode: "video", height: 1080, audio_format: "mp3", bitrate: "320",
-                   prefer_h264: true, embed_thumbnail: true, playlist: false, theme: "system" };
+                   prefer_h264: true, embed_thumbnail: true, playlist: false, theme: "system", fast_mode: true };
 renderOptions();
 applyTheme(localTheme() || "system");
 poll(true);

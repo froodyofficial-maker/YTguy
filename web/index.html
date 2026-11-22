@@ -167,6 +167,13 @@
       <button class="btn ghost sm" id="browseDirBtn"><svg><use href="#i-folder"/></svg>Browse…</button>
     </div>
     <div class="group">
+      <h3>Speed</h3>
+      <label class="option drawer-option">
+        <div><b>Fast downloads</b><span class="muted">Downloads each file over 8 connections at once with aria2. If a fast download fails, YTGuy retries automatically the normal way.</span></div>
+        <span class="switch"><input type="checkbox" id="fastToggle"><span></span></span>
+      </label>
+    </div>
+    <div class="group">
       <h3>Components</h3>
       <div class="versions" id="versions"><span class="muted small">Loading…</span></div>
       <button class="btn ghost sm" id="updateBtn"><svg><use href="#i-retry"/></svg>Update yt-dlp</button>
@@ -186,7 +193,7 @@
   <div class="modal">
     <img src="favicon.svg" alt="" width="56" height="56">
     <h2>Welcome to YTGuy</h2>
-    <p class="muted">First, YTGuy needs three free helper programs (about 170 MB). This is a one-time download.</p>
+    <p class="muted">First, YTGuy needs a few free helper programs (about 170 MB). This is a one-time download.</p>
     <ul class="setup-list" id="setupList"></ul>
     <div class="bar"><span id="setupBar"></span></div>
     <p class="small muted" id="setupText">&nbsp;</p>

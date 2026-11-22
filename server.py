@@ -7,6 +7,7 @@ browser. Nothing is hosted online; all downloading happens on this machine.
 """
 
 import json
+import re
 import os
 import secrets
 import socket
@@ -31,7 +32,8 @@ ALLOWED_ORIGINS = {"https://froodyofficial-maker.github.io"} | {
     o.strip().rstrip("/") for o in os.environ.get("YTGUY_ALLOWED_ORIGINS", "").split(",") if o.strip()}
 WEB_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "web"
 TOKEN = secrets.token_urlsafe(24)
-MAX_PARALLEL = 2
+MAX_PARALLEL = 3
+INFO_CACHE_SECONDS = 2 * 3600  # YouTube stream URLs stay valid for ~6 h
 IDLE_EXIT_SECONDS = 15 * 60  # quit when the browser has been gone this long
 
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -48,6 +50,7 @@ class Settings:
         "out_dir": str(Path.home() / "Downloads" / "YTGuy"),
         "mode": "video", "height": 1080, "audio_format": "mp3", "bitrate": "320",
         "prefer_h264": True, "embed_thumbnail": True, "playlist": False, "theme": "system",
+        "fast_mode": True,
     }
 
     def __init__(self):
@@ -178,12 +181,18 @@ class JobManager:
             return any(j.status in ("queued", "downloading", "processing") for j in self.jobs.values())
 
     def add(self, url, opts, meta):
-        job = Job(url, opts, meta)
+        """Queue a download; returns (job, is_new). An identical download that is
+        still queued or running is reused instead of fighting over the same file."""
         with self.lock:
+            for existing in self.jobs.values():
+                if (existing.url == url and existing.opts == opts
+                        and existing.status in ("queued", "downloading", "processing")):
+                    return existing, False
+            job = Job(url, opts, meta)
             self.jobs[job.id] = job
             self.order.append(job.id)
             self.wake.notify()
-        return job
+        return job, True
 
     def cancel(self, job_id):
         with self.lock:
@@ -202,7 +211,7 @@ class JobManager:
         if old and old.status in ("error", "cancelled"):
             self.remove(job_id)
             return self.add(old.url, old.opts, {"title": old.title, "thumbnail": old.thumbnail,
-                                                "duration": old.duration})
+                                                "duration": old.duration})[0]
 
     def remove(self, job_id):
         with self.lock:
@@ -251,14 +260,44 @@ class JobManager:
             return
         o = job.opts
         Path(o["out_dir"]).mkdir(parents=True, exist_ok=True)
+        fast = o.get("fast_mode", True) and bool(core.tool_path("aria2c"))
+        info = None if o["playlist"] else cached_info(job.url)
+        code, errors = self._attempt(job, ytdlp, fast=fast, info=info)
+        if code not in (0, None) and not job.cancelled and (fast or info):
+            # Fast path failed (e.g. a server refusing parallel connections or an
+            # expired link): retry once the plain, proven way.
+            job.log.append("[YTGuy] Retrying with the standard downloader…")
+            job.status, job.stage, job.progress = "downloading", "Retrying", 0.0
+            code, errors = self._attempt(job, ytdlp, fast=False, info=None)
+
+        job.speed = job.eta = None
+        if job.cancelled:
+            job.status, job.stage = "cancelled", ""
+        elif code == 0:
+            job.status, job.stage, job.progress = "done", "", 100.0
+        else:
+            job.status = "error"
+            job.error = (errors[-1] if errors else f"yt-dlp exited with code {code}")
+
+    def _attempt(self, job, ytdlp, fast, info):
+        o = job.opts
         work_dir = tempfile.mkdtemp(prefix="ytguy-")
         files_log = os.path.join(work_dir, "files.txt")
+        info_json = None
+        if info:
+            info_json = os.path.join(work_dir, "info.json")
+            with open(info_json, "wb") as f:
+                f.write(info)
         cmd = core.build_command(
             ytdlp, [job.url], o["out_dir"], o["mode"], height=o.get("height"),
             prefer_h264=o["prefer_h264"], audio_format=o["audio_format"], bitrate=o["bitrate"],
             playlist=o["playlist"], embed_thumbnail=o["embed_thumbnail"], filepath_log=files_log,
-            temp_dir=os.path.join(work_dir, "parts"))
+            temp_dir=os.path.join(work_dir, "parts"), fast=fast, info_json=info_json)
         errors = []
+        code = None
+        stop_watch = threading.Event()
+        if fast:
+            threading.Thread(target=self._watch_aria2, args=(job, work_dir, stop_watch), daemon=True).start()
         try:
             job.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                         creationflags=core.NO_WINDOW, env=core.subprocess_env())
@@ -268,6 +307,8 @@ class JobManager:
                     continue
                 if line.startswith("[PROG]"):
                     self._progress(job, line[6:])
+                    continue
+                if line.startswith("[#") and self._aria2_progress(job, line):
                     continue
                 job.log.append(line)
                 del job.log[:-300]
@@ -283,21 +324,75 @@ class JobManager:
                     job.stage = "Already downloaded"
             code = job.proc.wait()
         finally:
+            stop_watch.set()
             job.proc = None
             try:
                 job.files = [l for l in Path(files_log).read_text(encoding="utf-8").splitlines() if l]
             except Exception:
                 pass
             shutil.rmtree(work_dir, ignore_errors=True)
+        return code, errors
 
-        job.speed = job.eta = None
-        if job.cancelled:
-            job.status, job.stage = "cancelled", ""
-        elif code == 0:
-            job.status, job.stage, job.progress = "done", "", 100.0
+    @staticmethod
+    def _watch_aria2(job, work_dir, stop):
+        """Live progress for aria2c downloads, read from its .aria2 control file."""
+        last = {}  # control file -> (time, bytes) for speed
+        speed = None
+        while not stop.wait(0.5):
+            try:
+                ctl = [os.path.join(dp, f) for dp, _, fs in os.walk(work_dir) for f in fs if f.endswith(".aria2")]
+                if not ctl:
+                    continue
+                path = max(ctl, key=os.path.getmtime)
+                done, total = core.read_aria2_control(path)
+            except Exception:
+                continue
+            now = time.time()
+            prev = last.get(path)
+            if prev and now - prev[0] >= 0.9 and done >= prev[1]:
+                inst = (done - prev[1]) / (now - prev[0])
+                speed = inst if speed is None else 0.6 * speed + 0.4 * inst
+                last[path] = (now, done)
+            elif not prev:
+                last[path] = (now, done)
+            if not total:
+                continue
+            job.status = "downloading"
+            if not job.stage.startswith("Downloading"):
+                job.stage = "Downloading audio" if job.opts["mode"] == "audio" else "Downloading"
+            job.downloaded, job.total = done, total
+            job.progress = min(100.0, done * 100 / total)
+            job.speed = speed
+            job.eta = (total - done) / speed if speed else None
+
+    _ARIA2 = re.compile(r"^\[#\w+ ([\d.]+)(\w*)/([\d.]+)(\w*)\((\d+)%\)"
+                        r"(?: CN:\d+)?(?: DL:([\d.]+)(\w*))?(?: ETA:(\w+))?\]")
+    _UNITS = {"": 1, "B": 1, "KiB": 1024, "MiB": 1024 ** 2, "GiB": 1024 ** 3, "TiB": 1024 ** 4}
+
+    @classmethod
+    def _aria2_progress(cls, job, line):
+        """Parse aria2c's once-a-second readout, e.g. [#d30ded 15MiB/38MiB(39%) CN:8 DL:15MiB ETA:1s]."""
+        m = cls._ARIA2.match(line)
+        if not m:
+            return False
+        u = cls._UNITS
+        done = float(m.group(1)) * u.get(m.group(2), 1)
+        total = float(m.group(3)) * u.get(m.group(4), 1)
+        job.status = "downloading"
+        if not job.stage.startswith("Downloading"):
+            job.stage = "Downloading audio" if job.opts["mode"] == "audio" else "Downloading"
+        job.downloaded, job.total = done, total
+        job.progress = float(m.group(5))
+        job.speed = float(m.group(6)) * u.get(m.group(7), 1) if m.group(6) else None
+        eta = m.group(8)
+        if eta:
+            secs = 0
+            for num, unit in re.findall(r"(\d+)([hms])", eta):
+                secs += int(num) * {"h": 3600, "m": 60, "s": 1}[unit]
+            job.eta = secs
         else:
-            job.status = "error"
-            job.error = (errors[-1] if errors else f"yt-dlp exited with code {code}")
+            job.eta = None
+        return True
 
     @staticmethod
     def _progress(job, payload):
@@ -323,6 +418,18 @@ class JobManager:
 
 # --------------------------------------------------------------------------- info
 
+_info_cache = {}  # url -> (time, raw -J output), reused by downloads
+_info_lock = threading.Lock()
+
+
+def cached_info(url):
+    with _info_lock:
+        hit = _info_cache.get(url)
+    if hit and time.time() - hit[0] < INFO_CACHE_SECONDS:
+        return hit[1]
+    return None
+
+
 def fetch_info(url, playlist):
     ytdlp = core.tool_path("yt-dlp")
     if not ytdlp:
@@ -334,8 +441,14 @@ def fetch_info(url, playlist):
     if r.returncode != 0:
         lines = r.stderr.decode("utf-8", "replace").strip().splitlines() or ["Unknown error"]
         raise RuntimeError(lines[-1].replace("ERROR: ", "", 1))
-    info = json.loads(r.stdout.decode("utf-8", "replace"))
+    raw = r.stdout
+    info = json.loads(raw.decode("utf-8", "replace"))
     has_list = "list=" in url
+    if info.get("_type") != "playlist":
+        with _info_lock:
+            _info_cache[url] = (time.time(), raw)
+            for k in [k for k, (t, _) in _info_cache.items() if time.time() - t > INFO_CACHE_SECONDS]:
+                _info_cache.pop(k, None)
 
     if info.get("_type") == "playlist":
         entries = info.get("entries") or []
@@ -426,7 +539,8 @@ def reveal(path):
 
 def tool_versions():
     out = {}
-    for name, args in (("yt-dlp", ["--version"]), ("ffmpeg", ["-version"]), ("deno", ["--version"])):
+    for name, args in (("yt-dlp", ["--version"]), ("ffmpeg", ["-version"]),
+                       ("aria2c", ["--version"]), ("deno", ["--version"])):
         path = core.tool_path(name)
         if not path:
             out[name] = None
@@ -593,14 +707,16 @@ class Handler(BaseHTTPRequestHandler):
                 "embed_thumbnail": bool(b.get("embed_thumbnail", s["embed_thumbnail"])),
                 "playlist": bool(b.get("playlist", s["playlist"])),
                 "out_dir": s["out_dir"],
+                "fast_mode": bool(s.get("fast_mode", True)),
             }
             if opts["audio_format"] not in core.AUDIO_FORMATS:
                 raise RuntimeError("Unknown audio format.")
             if opts["bitrate"] not in core.BITRATES:
                 raise RuntimeError("Unknown bitrate.")
             meta = b.get("meta") or {}
-            jobs = [State.jobs.add(u.strip(), opts, meta if len(urls) == 1 else {}) for u in urls]
-            return {"ids": [j.id for j in jobs]}
+            added = [State.jobs.add(u.strip(), opts, meta if len(urls) == 1 else {}) for u in urls]
+            return {"ids": [j.id for j, _ in added], "added": sum(new for _, new in added),
+                    "duplicates": sum(not new for _, new in added)}
         if path == "/api/cancel":
             State.jobs.cancel(b.get("id"))
             return {"ok": True}
